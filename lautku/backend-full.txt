@@ -1,0 +1,1778 @@
+﻿
+
+===== D:\fixxUAS\proyekUAS kelompok 7\lautku\config\db.js =====
+
+const { initializeApp, cert } = require("firebase-admin/app");
+const { getFirestore } = require("firebase-admin/firestore");
+const serviceAccount = require("./serviceAccountKey.json");
+
+initializeApp({
+  credential: cert(serviceAccount)
+});
+
+const db = getFirestore();
+
+module.exports = db;
+
+
+===== D:\fixxUAS\proyekUAS kelompok 7\lautku\controllers\artikelController.js =====
+
+const artikelModel = require('../models/artikelModel');
+
+exports.getAll = async (req, res) => {
+  try {
+    const artikel = await artikelModel.findAll('publish');
+    res.json(artikel);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.getAllAdmin = async (req, res) => {
+  try {
+    const artikel = await artikelModel.findAll();
+    res.json(artikel);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.getById = async (req, res) => {
+  try {
+    const artikel = await artikelModel.findById(req.params.id);
+    if (!artikel) return res.status(404).json({ message: 'Artikel tidak ditemukan' });
+    res.json(artikel);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.create = async (req, res) => {
+  try {
+    const { judul, konten, kategori, status, gambar } = req.body;
+    const id = await artikelModel.create({
+      admin_id: req.user.id,
+      judul,
+      konten,
+      kategori: kategori || null,
+      status: status || 'draft',
+      gambar: gambar || null
+    });
+    res.status(201).json({ message: 'Artikel berhasil dibuat', id });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.update = async (req, res) => {
+  try {
+    const artikel = await artikelModel.findById(req.params.id);
+    if (!artikel) return res.status(404).json({ message: 'Artikel tidak ditemukan' });
+    const { judul, konten, kategori, status, gambar } = req.body;
+    await artikelModel.update(req.params.id, { judul, konten, kategori, status, gambar });
+    res.json({ message: 'Artikel berhasil diupdate' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.delete = async (req, res) => {
+  try {
+    const artikel = await artikelModel.findById(req.params.id);
+    if (!artikel) return res.status(404).json({ message: 'Artikel tidak ditemukan' });
+    await artikelModel.delete(req.params.id);
+    res.json({ message: 'Artikel berhasil dihapus' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+
+===== D:\fixxUAS\proyekUAS kelompok 7\lautku\controllers\authController.js =====
+
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const userModel = require('../models/userModel');
+
+exports.register = async (req, res) => {
+  try {
+    const { nama, email, password, role } = req.body;
+
+    const existing = await userModel.findByEmail(email);
+    if (existing) {
+      return res.status(400).json({ message: 'Email sudah terdaftar' });
+    }
+
+    const hash = await bcrypt.hash(password, 10);
+    const id = await userModel.create({
+      nama,
+      email,
+      password: hash,
+      role: role || 'pembeli',
+      foto: null,
+      no_hp: null,
+      alamat: null
+    });
+
+    res.status(201).json({ message: 'Registrasi berhasil', id });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.login = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    const user = await userModel.findByEmail(email);
+    if (!user) {
+      return res.status(401).json({ message: 'Email tidak ditemukan' });
+    }
+
+    if (user.status === 'suspend') {
+      return res.status(403).json({ message: 'Akun kamu disuspend' });
+    }
+
+    const match = await bcrypt.compare(password, user.password);
+    if (!match) {
+      return res.status(401).json({ message: 'Password salah' });
+    }
+
+    const token = jwt.sign(
+      { id: user.id, email: user.email, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: process.env.JWT_EXPIRES_IN }
+    );
+
+    res.json({
+      message: 'Login berhasil',
+      token,
+      user: {
+        id: user.id,
+        nama: user.nama,
+        email: user.email,
+        role: user.role,
+        foto: user.foto
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.getMe = async (req, res) => {
+  try {
+    const user = await userModel.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: 'User tidak ditemukan' });
+    }
+    const { password, ...data } = user;
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.resetPassword = async (req, res) => {
+  try {
+    const { email, newPassword } = req.body;
+
+    if (!email || !newPassword) {
+      return res.status(400).json({ message: 'Email dan password baru wajib diisi' });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ message: 'Password baru minimal 6 karakter' });
+    }
+
+    const user = await userModel.findByEmail(email);
+    if (!user) {
+      return res.status(404).json({ message: 'Email tidak terdaftar' });
+    }
+
+    const hash = await bcrypt.hash(newPassword, 10);
+    await userModel.update(user.id, { password: hash });
+
+    res.json({ message: 'Password berhasil diubah, silakan login dengan password baru' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+
+===== D:\fixxUAS\proyekUAS kelompok 7\lautku\controllers\cuacaController.js =====
+
+const tambakModel = require('../models/tambakModel');
+
+const WEATHER_LABELS = {
+  0: { label: 'Cerah', icon: 'â˜€ï¸' },
+  1: { label: 'Cerah Berawan', icon: 'ðŸŒ¤ï¸' },
+  2: { label: 'Berawan Sebagian', icon: 'â›…' },
+  3: { label: 'Mendung', icon: 'â˜ï¸' },
+  45: { label: 'Berkabut', icon: 'ðŸŒ«ï¸' },
+  48: { label: 'Berkabut Tebal', icon: 'ðŸŒ«ï¸' },
+  51: { label: 'Gerimis Ringan', icon: 'ðŸŒ¦ï¸' },
+  53: { label: 'Gerimis', icon: 'ðŸŒ¦ï¸' },
+  55: { label: 'Gerimis Lebat', icon: 'ðŸŒ§ï¸' },
+  61: { label: 'Hujan Ringan', icon: 'ðŸŒ§ï¸' },
+  63: { label: 'Hujan Sedang', icon: 'ðŸŒ§ï¸' },
+  65: { label: 'Hujan Lebat', icon: 'ðŸŒ§ï¸' },
+  80: { label: 'Hujan Lokal Ringan', icon: 'ðŸŒ¦ï¸' },
+  81: { label: 'Hujan Lokal Sedang', icon: 'ðŸŒ§ï¸' },
+  82: { label: 'Hujan Lokal Lebat', icon: 'â›ˆï¸' },
+  95: { label: 'Badai Petir', icon: 'â›ˆï¸' },
+  96: { label: 'Badai Petir + Hujan Es', icon: 'â›ˆï¸' },
+  99: { label: 'Badai Petir Kuat', icon: 'â›ˆï¸' }
+};
+
+const getWeatherInfo = (code) => WEATHER_LABELS[code] || { label: 'Tidak diketahui', icon: 'â“' };
+
+const searchLocation = async (query) => {
+  const geoRes = await fetch(
+    `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=1&language=id&format=json`
+  );
+  const geoData = await geoRes.json();
+  return geoData.results && geoData.results.length > 0 ? geoData.results[0] : null;
+};
+
+const resolveLocation = async (lokasi) => {
+  let result = await searchLocation(lokasi);
+  if (result) return result;
+
+  const bagianLokasi = lokasi.split(',').map(s => s.trim()).filter(Boolean);
+  for (const bagian of bagianLokasi) {
+    result = await searchLocation(bagian);
+    if (result) return result;
+  }
+
+  return null;
+};
+
+exports.getByTambak = async (req, res) => {
+  try {
+    const tambak = await tambakModel.findById(req.params.tambak_id);
+    if (!tambak) return res.status(404).json({ message: 'Tambak tidak ditemukan' });
+    if (tambak.nelayan_id !== req.user.id && req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Akses ditolak' });
+    }
+    if (!tambak.lokasi) {
+      return res.status(400).json({ message: 'Tambak belum memiliki data lokasi' });
+    }
+
+    const lokasiDitemukan = await resolveLocation(tambak.lokasi);
+
+    if (!lokasiDitemukan) {
+      return res.status(404).json({
+        message: `Lokasi "${tambak.lokasi}" tidak ditemukan di layanan cuaca. Coba isi lokasi dengan nama kota/kabupaten yang lebih spesifik.`
+      });
+    }
+
+    const { latitude, longitude, name } = lokasiDitemukan;
+
+    const weatherRes = await fetch(
+      `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}` +
+      `&current=temperature_2m,relative_humidity_2m,precipitation,weather_code,wind_speed_10m` +
+      `&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum` +
+      `&timezone=Asia%2FJakarta&forecast_days=3`
+    );
+    const weatherData = await weatherRes.json();
+
+    const current = weatherData.current;
+    const currentInfo = getWeatherInfo(current.weather_code);
+
+    const forecast = weatherData.daily.time.map((tanggal, i) => {
+      const info = getWeatherInfo(weatherData.daily.weather_code[i]);
+      return {
+        tanggal,
+        kondisi: info.label,
+        icon: info.icon,
+        suhu_max: weatherData.daily.temperature_2m_max[i],
+        suhu_min: weatherData.daily.temperature_2m_min[i],
+        curah_hujan: weatherData.daily.precipitation_sum[i]
+      };
+    });
+
+    res.json({
+      lokasi: name,
+      saat_ini: {
+        suhu: current.temperature_2m,
+        kelembapan: current.relative_humidity_2m,
+        curah_hujan: current.precipitation,
+        kecepatan_angin: current.wind_speed_10m,
+        kondisi: currentInfo.label,
+        icon: currentInfo.icon
+      },
+      prakiraan_3_hari: forecast
+    });
+  } catch (err) {
+    res.status(500).json({ message: 'Gagal mengambil data cuaca', error: err.message });
+  }
+};
+
+
+===== D:\fixxUAS\proyekUAS kelompok 7\lautku\controllers\monitoringController.js =====
+
+const monitoringModel = require('../models/monitoringModel');
+
+exports.getByTambak = async (req, res) => {
+  try {
+    const data = await monitoringModel.findByTambak(req.params.tambak_id);
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.create = async (req, res) => {
+  try {
+    const { tambak_id, ph, suhu, salinitas, oksigen, kecerahan, catatan } = req.body;
+    const id = await monitoringModel.create({
+      tambak_id,
+      ph: parseFloat(ph),
+      suhu: parseFloat(suhu),
+      salinitas: parseFloat(salinitas),
+      oksigen: parseFloat(oksigen),
+      kecerahan: parseFloat(kecerahan),
+      catatan: catatan || null
+    });
+    res.status(201).json({ message: 'Data monitoring berhasil ditambahkan', id });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.delete = async (req, res) => {
+  try {
+    const data = await monitoringModel.findById(req.params.id);
+    if (!data) return res.status(404).json({ message: 'Data monitoring tidak ditemukan' });
+    await monitoringModel.delete(req.params.id);
+    res.json({ message: 'Data monitoring berhasil dihapus' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+
+===== D:\fixxUAS\proyekUAS kelompok 7\lautku\controllers\orderController.js =====
+
+const keranjangModel = require('../models/keranjangModel');
+const orderModel = require('../models/orderModel');
+const orderDetailModel = require('../models/orderDetailModel');
+const productModel = require('../models/productModel');
+const userModel = require('../models/userModel');
+
+// Status order yang masih boleh dibatalkan oleh pembeli.
+// Begitu status sudah 'dikirim' atau 'selesai', pembatalan tidak diizinkan lagi.
+const CANCELABLE_STATUSES = ['pending', 'dikonfirmasi'];
+
+// Helper: ambil data user dengan cache sederhana supaya tidak query berulang
+// untuk pembeli/nelayan yang sama di dalam satu request.
+const buildUserCache = () => {
+  const cache = {};
+  return async (id) => {
+    if (!id) return null;
+    if (cache[id] !== undefined) return cache[id];
+    const u = await userModel.findById(id).catch(() => null);
+    cache[id] = u;
+    return u;
+  };
+};
+
+// Helper: lengkapi daftar order dengan nama pembeli, daftar produk yang dibeli,
+// dan nama nelayan pemilik produk. Dipakai untuk tampilan admin & nelayan
+// supaya "Order Terbaru" tidak lagi menampilkan generic 'Produk' / 'Rp 0'.
+const enrichOrders = async (orders) => {
+  const getUser = buildUserCache();
+
+  return Promise.all(orders.map(async (order) => {
+    const details = await orderDetailModel.findByOrder(order.id);
+    const pembeli = await getUser(order.pembeli_id);
+
+    const items = await Promise.all(details.map(async (d) => {
+      const nelayan = await getUser(d.nelayan_id);
+      return {
+        produk_id: d.produk_id,
+        nama_produk: d.nama_produk,
+        jumlah: d.jumlah,
+        harga_satuan: d.harga_satuan,
+        subtotal: d.subtotal,
+        nelayan_id: d.nelayan_id,
+        nelayan_nama: nelayan?.nama || nelayan?.name || null
+      };
+    }));
+
+    const namaProdukGabungan = items.map(i => i.nama_produk).filter(Boolean).join(', ') || 'Produk';
+    const namaNelayanUnik = [...new Set(items.map(i => i.nelayan_nama).filter(Boolean))].join(', ');
+
+    return {
+      ...order,
+      // total_harga sudah tersimpan di dokumen order sejak checkout,
+      // tapi kita pastikan selalu ada angkanya (fallback hitung ulang dari items)
+      total_harga: order.total_harga ?? items.reduce((sum, i) => sum + (i.subtotal || 0), 0),
+      pembeli_nama: pembeli?.nama || pembeli?.name || 'Pembeli',
+      pembeli_email: pembeli?.email || null,
+      items,
+      nama_produk: namaProdukGabungan,
+      nelayan_nama: namaNelayanUnik || null
+    };
+  }));
+};
+
+exports.getKeranjang = async (req, res) => {
+  try {
+    const items = await keranjangModel.findByPembeli(req.user.id);
+    res.json(items);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.addToKeranjang = async (req, res) => {
+  try {
+    const { produk_id, jumlah } = req.body;
+    const produk = await productModel.findById(produk_id);
+    if (!produk) return res.status(404).json({ message: 'Produk tidak ditemukan' });
+    if (produk.status === 'habis') return res.status(400).json({ message: 'Produk habis' });
+
+    const existing = await keranjangModel.findItem(req.user.id, produk_id);
+    if (existing) {
+      await keranjangModel.update(existing.id, { jumlah: existing.jumlah + parseInt(jumlah) });
+      return res.json({ message: 'Jumlah produk diupdate' });
+    }
+
+    const id = await keranjangModel.create({
+      pembeli_id: req.user.id,
+      produk_id,
+      jumlah: parseInt(jumlah),
+      nama_produk: produk.nama_produk,
+      harga: produk.harga,
+      gambar: produk.gambar,
+      satuan: produk.satuan,
+      stok: produk.stok,
+      nelayan_id: produk.nelayan_id
+    });
+    res.status(201).json({ message: 'Produk ditambahkan ke keranjang', id });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.updateKeranjang = async (req, res) => {
+  try {
+    const item = await keranjangModel.findById(req.params.id);
+    if (!item) return res.status(404).json({ message: 'Item tidak ditemukan' });
+    if (item.pembeli_id !== req.user.id) return res.status(403).json({ message: 'Akses ditolak' });
+    await keranjangModel.update(req.params.id, { jumlah: parseInt(req.body.jumlah) });
+    res.json({ message: 'Keranjang berhasil diupdate' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.deleteKeranjang = async (req, res) => {
+  try {
+    const item = await keranjangModel.findById(req.params.id);
+    if (!item) return res.status(404).json({ message: 'Item tidak ditemukan' });
+    if (item.pembeli_id !== req.user.id) return res.status(403).json({ message: 'Akses ditolak' });
+    await keranjangModel.delete(req.params.id);
+    res.json({ message: 'Item dihapus dari keranjang' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.checkout = async (req, res) => {
+  try {
+    const { alamat_pengiriman, catatan } = req.body;
+    const items = await keranjangModel.findByPembeli(req.user.id);
+    if (items.length === 0) return res.status(400).json({ message: 'Keranjang kosong' });
+
+    const total_harga = items.reduce((sum, item) => sum + (item.harga * item.jumlah), 0);
+
+    const order_id = await orderModel.create({
+      pembeli_id: req.user.id,
+      total_harga,
+      alamat_pengiriman,
+      catatan: catatan || null
+    });
+
+    const details = items.map(item => ({
+      order_id,
+      produk_id: item.produk_id,
+      nelayan_id: item.nelayan_id || null,
+      nama_produk: item.nama_produk,
+      jumlah: item.jumlah,
+      harga_satuan: item.harga,
+      subtotal: item.harga * item.jumlah
+    }));
+
+    await orderDetailModel.createBatch(details);
+    await keranjangModel.deleteByPembeli(req.user.id);
+
+    res.status(201).json({ message: 'Checkout berhasil', order_id });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.getOrders = async (req, res) => {
+  try {
+    let orders;
+    if (req.user.role === 'admin') {
+      orders = await orderModel.findAll();
+      orders = await enrichOrders(orders);
+    } else if (req.user.role === 'nelayan') {
+      orders = await orderModel.findByNelayan(req.user.id);
+      orders = await enrichOrders(orders);
+    } else {
+      orders = await orderModel.findByPembeli(req.user.id);
+    }
+
+    // Urutkan dari yang terbaru berdasarkan createdAt
+    orders.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+
+    res.json(orders);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.getOrderById = async (req, res) => {
+  try {
+    const order = await orderModel.findById(req.params.id);
+    if (!order) return res.status(404).json({ message: 'Order tidak ditemukan' });
+
+    // Pembeli hanya boleh melihat order miliknya sendiri
+    if (req.user.role === 'pembeli' && order.pembeli_id !== req.user.id) {
+      return res.status(403).json({ message: 'Akses ditolak' });
+    }
+
+    const rawDetails = await orderDetailModel.findByOrder(req.params.id);
+
+    // Lengkapi setiap item dengan nama penjual (nelayan)
+    const getUser = buildUserCache();
+    const details = await Promise.all(rawDetails.map(async (d) => {
+      const nelayan = await getUser(d.nelayan_id);
+      return {
+        ...d,
+        nelayan_nama: nelayan?.nama || nelayan?.name || null
+      };
+    }));
+
+    let pembeli_nama = null;
+    let pembeli_email = null;
+    if (req.user.role === 'admin' || req.user.role === 'nelayan') {
+      const pembeli = await userModel.findById(order.pembeli_id).catch(() => null);
+      pembeli_nama = pembeli?.nama || pembeli?.name || null;
+      pembeli_email = pembeli?.email || null;
+    }
+
+    res.json({ ...order, details, pembeli_nama, pembeli_email });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.updateStatus = async (req, res) => {
+  try {
+    const order = await orderModel.findById(req.params.id);
+    if (!order) return res.status(404).json({ message: 'Order tidak ditemukan' });
+    await orderModel.update(req.params.id, { status: req.body.status });
+    res.json({ message: 'Status order berhasil diupdate' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// Pembatalan pesanan oleh pembeli.
+// Hanya pemilik order yang bisa membatalkan, dan hanya selama status
+// masih 'pending' atau 'dikonfirmasi' (belum dikirim).
+exports.cancelOrder = async (req, res) => {
+  try {
+    const order = await orderModel.findById(req.params.id);
+    if (!order) return res.status(404).json({ message: 'Order tidak ditemukan' });
+
+    if (order.pembeli_id !== req.user.id) {
+      return res.status(403).json({ message: 'Akses ditolak' });
+    }
+
+    const statusSaatIni = (order.status || '').toLowerCase();
+    if (!CANCELABLE_STATUSES.includes(statusSaatIni)) {
+      return res.status(400).json({
+        message: 'Pesanan tidak bisa dibatalkan karena sudah dikirim/selesai/dibatalkan'
+      });
+    }
+
+    await orderModel.update(req.params.id, { status: 'dibatalkan' });
+    res.json({ message: 'Pesanan berhasil dibatalkan' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+
+===== D:\fixxUAS\proyekUAS kelompok 7\lautku\controllers\panenController.js =====
+
+const panenModel = require('../models/panenModel');
+
+const panenController = {
+  getByTambak: async (req, res) => {
+    try {
+      const { tambak_id } = req.params;
+      const data = await panenModel.findByTambak(tambak_id);
+      res.json(data);
+    } catch (err) {
+      res.status(500).json({ message: err.message });
+    }
+  },
+
+  getById: async (req, res) => {
+    try {
+      const data = await panenModel.findById(req.params.id);
+      if (!data) return res.status(404).json({ message: 'Data panen tidak ditemukan' });
+      res.json(data);
+    } catch (err) {
+      res.status(500).json({ message: err.message });
+    }
+  },
+
+  create: async (req, res) => {
+    try {
+      const { tambak_id, tanggal_tebar, tanggal_panen_rencana, jumlah_tebar, catatan } = req.body;
+      const id = await panenModel.create({
+        tambak_id,
+        tanggal_tebar,
+        tanggal_panen_rencana,
+        tanggal_panen_aktual: null,
+        jumlah_tebar: parseInt(jumlah_tebar),
+        hasil_panen: null,
+        catatan: catatan || null
+      });
+      res.status(201).json({ message: 'Data panen berhasil ditambahkan', id });
+    } catch (err) {
+      res.status(500).json({ message: err.message });
+    }
+  },
+
+  update: async (req, res) => {
+    try {
+      const data = await panenModel.findById(req.params.id);
+      if (!data) return res.status(404).json({ message: 'Data panen tidak ditemukan' });
+
+      const { tanggal_panen_aktual, hasil_panen, status, catatan } = req.body;
+      await panenModel.update(req.params.id, {
+        tanggal_panen_aktual: tanggal_panen_aktual || null,
+        hasil_panen: hasil_panen ? parseFloat(hasil_panen) : null,
+        status,
+        catatan: catatan || null
+      });
+      res.json({ message: 'Data panen berhasil diperbarui' });
+    } catch (err) {
+      res.status(500).json({ message: err.message });
+    }
+  },
+
+  remove: async (req, res) => {
+    try {
+      const data = await panenModel.findById(req.params.id);
+      if (!data) return res.status(404).json({ message: 'Data panen tidak ditemukan' });
+
+      await panenModel.delete(req.params.id);
+      res.json({ message: 'Data panen berhasil dihapus' });
+    } catch (err) {
+      res.status(500).json({ message: err.message });
+    }
+  }
+};
+
+module.exports = panenController;
+
+
+===== D:\fixxUAS\proyekUAS kelompok 7\lautku\controllers\productController.js =====
+
+const productModel = require('../models/productModel');
+const kategoriModel = require('../models/kategoriModel');
+const userModel = require('../models/userModel');
+
+exports.getAll = async (req, res) => {
+  try {
+    const filter = {};
+    if (req.query.kategori_id) filter.kategori_id = req.query.kategori_id;
+    if (req.query.status) filter.status = req.query.status;
+    let produk = await productModel.findAll(filter);
+    if (req.query.search) {
+      const keyword = req.query.search.toLowerCase();
+      produk = produk.filter(p => p.nama_produk.toLowerCase().includes(keyword));
+    }
+    res.json(produk);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.getById = async (req, res) => {
+  try {
+    const produk = await productModel.findById(req.params.id);
+    if (!produk) return res.status(404).json({ message: 'Produk tidak ditemukan' });
+
+    // Lengkapi data produk dengan info nelayan yang memposting,
+    // supaya halaman Detail Produk bisa menampilkan "Dijual oleh".
+    let nelayan = null;
+    if (produk.nelayan_id) {
+      const n = await userModel.findById(produk.nelayan_id).catch(() => null);
+      if (n) {
+        nelayan = {
+          id: n.id,
+          nama: n.nama || n.name || 'Nelayan',
+          lokasi: n.lokasi || n.alamat || null,
+          email: n.email || null
+        };
+      }
+    }
+
+    res.json({ ...produk, nelayan });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.getByNelayan = async (req, res) => {
+  try {
+    const produk = await productModel.findByNelayan(req.user.id);
+    res.json(produk);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.create = async (req, res) => {
+  try {
+    const { nama_produk, deskripsi, harga, stok, satuan, kategori_id, gambar } = req.body;
+    const id = await productModel.create({
+      nelayan_id: req.user.id,
+      nama_produk,
+      deskripsi: deskripsi || null,
+      harga: parseFloat(harga),
+      stok: parseInt(stok),
+      satuan,
+      kategori_id,
+      gambar: gambar || null,
+      status: 'tersedia'
+    });
+    res.status(201).json({ message: 'Produk berhasil ditambahkan', id });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.update = async (req, res) => {
+  try {
+    const produk = await productModel.findById(req.params.id);
+    if (!produk) return res.status(404).json({ message: 'Produk tidak ditemukan' });
+    if (produk.nelayan_id !== req.user.id && req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Akses ditolak' });
+    }
+    const { nama_produk, deskripsi, harga, stok, satuan, kategori_id, status, gambar } = req.body;
+    await productModel.update(req.params.id, {
+      nama_produk,
+      deskripsi: deskripsi || null,
+      harga: parseFloat(harga),
+      stok: parseInt(stok),
+      satuan,
+      kategori_id,
+      status: status || produk.status,
+      gambar: gambar || produk.gambar || null
+    });
+    res.json({ message: 'Produk berhasil diupdate' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.delete = async (req, res) => {
+  try {
+    const produk = await productModel.findById(req.params.id);
+    if (!produk) return res.status(404).json({ message: 'Produk tidak ditemukan' });
+    if (produk.nelayan_id !== req.user.id && req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Akses ditolak' });
+    }
+    await productModel.delete(req.params.id);
+    res.json({ message: 'Produk berhasil dihapus' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.getAllKategori = async (req, res) => {
+  try {
+    const kategori = await kategoriModel.findAll();
+    res.json(kategori);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.createKategori = async (req, res) => {
+  try {
+    const { nama_kategori, deskripsi } = req.body;
+    const id = await kategoriModel.create({ nama_kategori, deskripsi });
+    res.status(201).json({ message: 'Kategori berhasil ditambahkan', id });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.deleteKategori = async (req, res) => {
+  try {
+    await kategoriModel.delete(req.params.id);
+    res.json({ message: 'Kategori berhasil dihapus' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+
+===== D:\fixxUAS\proyekUAS kelompok 7\lautku\controllers\tambakController.js =====
+
+const tambakModel = require('../models/tambakModel');
+const panenModel = require('../models/panenModel');
+const pengeluaranModel = require('../models/pengeluaranModel');
+
+exports.getAll = async (req, res) => {
+  try {
+    const tambak = await tambakModel.findByNelayan(req.user.id);
+    res.json(tambak);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.getById = async (req, res) => {
+  try {
+    const tambak = await tambakModel.findById(req.params.id);
+    if (!tambak) return res.status(404).json({ message: 'Tambak tidak ditemukan' });
+    if (tambak.nelayan_id !== req.user.id && req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Akses ditolak' });
+    }
+    res.json(tambak);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.create = async (req, res) => {
+  try {
+    const { nama_tambak, lokasi, luas, jenis_budidaya } = req.body;
+    const id = await tambakModel.create({
+      nelayan_id: req.user.id,
+      nama_tambak,
+      lokasi,
+      luas: parseFloat(luas),
+      jenis_budidaya
+    });
+    res.status(201).json({ message: 'Tambak berhasil ditambahkan', id });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.update = async (req, res) => {
+  try {
+    const tambak = await tambakModel.findById(req.params.id);
+    if (!tambak) return res.status(404).json({ message: 'Tambak tidak ditemukan' });
+    if (tambak.nelayan_id !== req.user.id) {
+      return res.status(403).json({ message: 'Akses ditolak' });
+    }
+    const { nama_tambak, lokasi, luas, jenis_budidaya } = req.body;
+    await tambakModel.update(req.params.id, { nama_tambak, lokasi, luas: parseFloat(luas), jenis_budidaya });
+    res.json({ message: 'Tambak berhasil diupdate' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.delete = async (req, res) => {
+  try {
+    const tambak = await tambakModel.findById(req.params.id);
+    if (!tambak) return res.status(404).json({ message: 'Tambak tidak ditemukan' });
+    if (tambak.nelayan_id !== req.user.id) {
+      return res.status(403).json({ message: 'Akses ditolak' });
+    }
+    await tambakModel.delete(req.params.id);
+    res.json({ message: 'Tambak berhasil dihapus' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.getPanen = async (req, res) => {
+  try {
+    const panen = await panenModel.findByTambak(req.params.id);
+    res.json(panen);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.createPanen = async (req, res) => {
+  try {
+    const { tanggal_tebar, tanggal_panen_rencana, jumlah_tebar, catatan } = req.body;
+    const id = await panenModel.create({
+      tambak_id: req.params.id,
+      tanggal_tebar,
+      tanggal_panen_rencana,
+      tanggal_panen_aktual: null,
+      jumlah_tebar: parseInt(jumlah_tebar),
+      hasil_panen: null,
+      catatan: catatan || null
+    });
+    res.status(201).json({ message: 'Siklus panen berhasil ditambahkan', id });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.updatePanen = async (req, res) => {
+  try {
+    const panen = await panenModel.findById(req.params.id);
+    if (!panen) return res.status(404).json({ message: 'Siklus panen tidak ditemukan' });
+    const { tanggal_panen_aktual, hasil_panen, status, catatan } = req.body;
+    await panenModel.update(req.params.id, {
+      tanggal_panen_aktual: tanggal_panen_aktual || null,
+      hasil_panen: hasil_panen ? parseFloat(hasil_panen) : null,
+      status,
+      catatan: catatan || null
+    });
+    res.json({ message: 'Siklus panen berhasil diupdate' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.getPengeluaran = async (req, res) => {
+  try {
+    const pengeluaran = await pengeluaranModel.findByTambak(req.params.id);
+    res.json(pengeluaran);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.createPengeluaran = async (req, res) => {
+  try {
+    const { kategori, jumlah, keterangan, tanggal, siklus_id } = req.body;
+    const id = await pengeluaranModel.create({
+      tambak_id: req.params.id,
+      siklus_id: siklus_id || null,
+      kategori,
+      jumlah: parseFloat(jumlah),
+      keterangan: keterangan || null,
+      tanggal
+    });
+    res.status(201).json({ message: 'Pengeluaran berhasil ditambahkan', id });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.updatePengeluaran = async (req, res) => {
+  try {
+    const pengeluaran = await pengeluaranModel.findById(req.params.id);
+    if (!pengeluaran) return res.status(404).json({ message: 'Pengeluaran tidak ditemukan' });
+    const { kategori, jumlah, keterangan, tanggal, siklus_id } = req.body;
+    await pengeluaranModel.update(req.params.id, {
+      kategori,
+      jumlah: parseFloat(jumlah),
+      keterangan: keterangan || null,
+      tanggal,
+      siklus_id: siklus_id || null
+    });
+    res.json({ message: 'Pengeluaran berhasil diupdate' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.deletePengeluaran = async (req, res) => {
+  try {
+    await pengeluaranModel.delete(req.params.id);
+    res.json({ message: 'Pengeluaran berhasil dihapus' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.getLaporan = async (req, res) => {
+  try {
+    const { dari, sampai } = req.query;
+    const panen = await panenModel.findByTambak(req.params.id);
+    const pengeluaran = await pengeluaranModel.findByPeriode(req.params.id, dari, sampai);
+    const total_pengeluaran = pengeluaran.reduce((sum, p) => sum + p.jumlah, 0);
+    const total_panen = panen
+      .filter(p => p.status === 'selesai')
+      .reduce((sum, p) => sum + (p.hasil_panen || 0), 0);
+    res.json({ panen, pengeluaran, total_panen, total_pengeluaran });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+
+===== D:\fixxUAS\proyekUAS kelompok 7\lautku\controllers\userController.js =====
+
+const userModel = require('../models/userModel');
+
+exports.getAll = async (req, res) => {
+  try {
+    const users = await userModel.findAll();
+    const data = users.map(({ password, ...u }) => u);
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.getById = async (req, res) => {
+  try {
+    const user = await userModel.findById(req.params.id);
+    if (!user) return res.status(404).json({ message: 'User tidak ditemukan' });
+    const { password, ...data } = user;
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.update = async (req, res) => {
+  try {
+    const { nama, no_hp, alamat } = req.body;
+    await userModel.update(req.params.id, { nama, no_hp, alamat });
+    res.json({ message: 'Profil berhasil diupdate' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.delete = async (req, res) => {
+  try {
+    await userModel.delete(req.params.id);
+    res.json({ message: 'User berhasil dihapus' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.suspend = async (req, res) => {
+  try {
+    const user = await userModel.findById(req.params.id);
+    if (!user) return res.status(404).json({ message: 'User tidak ditemukan' });
+    const newStatus = user.status === 'aktif' ? 'suspend' : 'aktif';
+    await userModel.suspend(req.params.id, newStatus);
+    res.json({ message: `Akun berhasil di${newStatus === 'suspend' ? 'suspend' : 'aktifkan'}` });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+
+===== D:\fixxUAS\proyekUAS kelompok 7\lautku\middleware\auth.js =====
+
+const jwt = require('jsonwebtoken');
+
+module.exports = (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+
+  if (!token) {
+    return res.status(401).json({ message: 'Token tidak ditemukan' });
+  }
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = decoded;
+    next();
+  } catch (err) {
+    return res.status(403).json({ message: 'Token tidak valid' });
+  }
+};
+
+
+===== D:\fixxUAS\proyekUAS kelompok 7\lautku\middleware\role.js =====
+
+module.exports = (...roles) => {
+  return (req, res, next) => {
+    if (!roles.includes(req.user.role)) {
+      return res.status(403).json({ message: 'Akses ditolak' });
+    }
+    next();
+  };
+};
+
+
+===== D:\fixxUAS\proyekUAS kelompok 7\lautku\models\artikelModel.js =====
+
+const db = require('../config/db');
+
+const artikelModel = {
+  findAll: async (status = null) => {
+    let ref = db.collection('artikel');
+    if (status) ref = ref.where('status', '==', status);
+    const snapshot = await ref.get();
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  },
+
+  findById: async (id) => {
+    const doc = await db.collection('artikel').doc(id).get();
+    if (!doc.exists) return null;
+    return { id: doc.id, ...doc.data() };
+  },
+
+  create: async (data) => {
+    const ref = await db.collection('artikel').add({
+      ...data,
+      createdAt: new Date().toISOString()
+    });
+    return ref.id;
+  },
+
+  update: async (id, data) => {
+    await db.collection('artikel').doc(id).update(data);
+  },
+
+  delete: async (id) => {
+    await db.collection('artikel').doc(id).delete();
+  }
+};
+
+module.exports = artikelModel;
+
+
+===== D:\fixxUAS\proyekUAS kelompok 7\lautku\models\kategoriModel.js =====
+
+const db = require('../config/db');
+
+const kategoriModel = {
+  findAll: async () => {
+    const snapshot = await db.collection('kategori').get();
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  },
+
+  findById: async (id) => {
+    const doc = await db.collection('kategori').doc(id).get();
+    if (!doc.exists) return null;
+    return { id: doc.id, ...doc.data() };
+  },
+
+  create: async (data) => {
+    const ref = await db.collection('kategori').add(data);
+    return ref.id;
+  },
+
+  update: async (id, data) => {
+    await db.collection('kategori').doc(id).update(data);
+  },
+
+  delete: async (id) => {
+    await db.collection('kategori').doc(id).delete();
+  }
+};
+
+module.exports = kategoriModel;
+
+
+===== D:\fixxUAS\proyekUAS kelompok 7\lautku\models\keranjangModel.js =====
+
+const db = require('../config/db');
+
+const keranjangModel = {
+  findByPembeli: async (pembeli_id) => {
+    const snapshot = await db.collection('keranjang')
+      .where('pembeli_id', '==', pembeli_id)
+      .get();
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  },
+
+  findById: async (id) => {
+    const doc = await db.collection('keranjang').doc(id).get();
+    if (!doc.exists) return null;
+    return { id: doc.id, ...doc.data() };
+  },
+
+  findItem: async (pembeli_id, produk_id) => {
+    const snapshot = await db.collection('keranjang')
+      .where('pembeli_id', '==', pembeli_id)
+      .where('produk_id', '==', produk_id)
+      .limit(1)
+      .get();
+    if (snapshot.empty) return null;
+    const doc = snapshot.docs[0];
+    return { id: doc.id, ...doc.data() };
+  },
+
+  create: async (data) => {
+    const ref = await db.collection('keranjang').add({
+      ...data,
+      createdAt: new Date().toISOString()
+    });
+    return ref.id;
+  },
+
+  update: async (id, data) => {
+    await db.collection('keranjang').doc(id).update(data);
+  },
+
+  delete: async (id) => {
+    await db.collection('keranjang').doc(id).delete();
+  },
+
+  deleteByPembeli: async (pembeli_id) => {
+    const snapshot = await db.collection('keranjang')
+      .where('pembeli_id', '==', pembeli_id)
+      .get();
+    const batch = db.batch();
+    snapshot.docs.forEach(doc => batch.delete(doc.ref));
+    await batch.commit();
+  }
+};
+
+module.exports = keranjangModel;
+
+
+===== D:\fixxUAS\proyekUAS kelompok 7\lautku\models\monitoringModel.js =====
+
+const db = require('../config/db');
+
+const monitoringModel = {
+  findByTambak: async (tambak_id) => {
+    const snapshot = await db.collection('monitoring_air')
+      .where('tambak_id', '==', tambak_id)
+      .orderBy('tanggal', 'desc')
+      .get();
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  },
+
+  findById: async (id) => {
+    const doc = await db.collection('monitoring_air').doc(id).get();
+    if (!doc.exists) return null;
+    return { id: doc.id, ...doc.data() };
+  },
+
+  create: async (data) => {
+    const ref = await db.collection('monitoring_air').add({
+      ...data,
+      tanggal: new Date().toISOString()
+    });
+    return ref.id;
+  },
+
+  delete: async (id) => {
+    await db.collection('monitoring_air').doc(id).delete();
+  }
+};
+
+module.exports = monitoringModel;
+
+
+===== D:\fixxUAS\proyekUAS kelompok 7\lautku\models\orderDetailModel.js =====
+
+const db = require('../config/db');
+
+const orderDetailModel = {
+  findByOrder: async (order_id) => {
+    const snapshot = await db.collection('order_detail')
+      .where('order_id', '==', order_id)
+      .get();
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  },
+
+  create: async (data) => {
+    const ref = await db.collection('order_detail').add(data);
+    return ref.id;
+  },
+
+  createBatch: async (items) => {
+    const batch = db.batch();
+    items.forEach(item => {
+      const ref = db.collection('order_detail').doc();
+      batch.set(ref, item);
+    });
+    await batch.commit();
+  }
+};
+
+module.exports = orderDetailModel;
+
+
+===== D:\fixxUAS\proyekUAS kelompok 7\lautku\models\orderModel.js =====
+
+const db = require('../config/db');
+
+const orderModel = {
+  findAll: async () => {
+    const snapshot = await db.collection('orders').get();
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  },
+
+  findByPembeli: async (pembeli_id) => {
+    const snapshot = await db.collection('orders')
+      .where('pembeli_id', '==', pembeli_id)
+      .get();
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  },
+
+  findByNelayan: async (nelayan_id) => {
+    const snapshot = await db.collection('order_detail')
+      .where('nelayan_id', '==', nelayan_id)
+      .get();
+    const orderIds = [...new Set(snapshot.docs.map(doc => doc.data().order_id))];
+    const orders = await Promise.all(orderIds.map(id => orderModel.findById(id)));
+    return orders.filter(Boolean);
+  },
+
+  findById: async (id) => {
+    const doc = await db.collection('orders').doc(id).get();
+    if (!doc.exists) return null;
+    return { id: doc.id, ...doc.data() };
+  },
+
+  create: async (data) => {
+    const ref = await db.collection('orders').add({
+      ...data,
+      status: 'pending',
+      createdAt: new Date().toISOString()
+    });
+    return ref.id;
+  },
+
+  update: async (id, data) => {
+    await db.collection('orders').doc(id).update(data);
+  }
+};
+
+module.exports = orderModel;
+
+
+===== D:\fixxUAS\proyekUAS kelompok 7\lautku\models\panenModel.js =====
+
+const db = require('../config/db');
+
+const panenModel = {
+  findByTambak: async (tambak_id) => {
+    const snapshot = await db.collection('siklus_panen')
+      .where('tambak_id', '==', tambak_id)
+      .get();
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  },
+
+  findById: async (id) => {
+    const doc = await db.collection('siklus_panen').doc(id).get();
+    if (!doc.exists) return null;
+    return { id: doc.id, ...doc.data() };
+  },
+
+  create: async (data) => {
+    const ref = await db.collection('siklus_panen').add({
+      ...data,
+      status: 'berlangsung',
+      createdAt: new Date().toISOString()
+    });
+    return ref.id;
+  },
+
+  update: async (id, data) => {
+    await db.collection('siklus_panen').doc(id).update(data);
+  },
+
+  delete: async (id) => {
+    await db.collection('siklus_panen').doc(id).delete();
+  }
+};
+
+module.exports = panenModel;
+
+
+===== D:\fixxUAS\proyekUAS kelompok 7\lautku\models\pengeluaranModel.js =====
+
+const db = require('../config/db');
+
+const pengeluaranModel = {
+  findByTambak: async (tambak_id) => {
+    const snapshot = await db.collection('pengeluaran_tambak')
+      .where('tambak_id', '==', tambak_id)
+      .get();
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  },
+
+  findById: async (id) => {
+    const doc = await db.collection('pengeluaran_tambak').doc(id).get();
+    if (!doc.exists) return null;
+    return { id: doc.id, ...doc.data() };
+  },
+
+  create: async (data) => {
+    const ref = await db.collection('pengeluaran_tambak').add({
+      ...data,
+      createdAt: new Date().toISOString()
+    });
+    return ref.id;
+  },
+
+  update: async (id, data) => {
+    await db.collection('pengeluaran_tambak').doc(id).update(data);
+  },
+
+  delete: async (id) => {
+    await db.collection('pengeluaran_tambak').doc(id).delete();
+  },
+
+  findByPeriode: async (tambak_id, dari, sampai) => {
+    const snapshot = await db.collection('pengeluaran_tambak')
+      .where('tambak_id', '==', tambak_id)
+      .where('tanggal', '>=', dari)
+      .where('tanggal', '<=', sampai)
+      .get();
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  }
+};
+
+module.exports = pengeluaranModel;
+
+
+===== D:\fixxUAS\proyekUAS kelompok 7\lautku\models\productModel.js =====
+
+const db = require('../config/db');
+
+const productModel = {
+  findAll: async (filter = {}) => {
+    let ref = db.collection('produk');
+    if (filter.kategori_id) ref = ref.where('kategori_id', '==', filter.kategori_id);
+    if (filter.status) ref = ref.where('status', '==', filter.status);
+    const snapshot = await ref.get();
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  },
+
+  findById: async (id) => {
+    const doc = await db.collection('produk').doc(id).get();
+    if (!doc.exists) return null;
+    return { id: doc.id, ...doc.data() };
+  },
+
+  findByNelayan: async (nelayan_id) => {
+    const snapshot = await db.collection('produk')
+      .where('nelayan_id', '==', nelayan_id)
+      .get();
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  },
+
+  create: async (data) => {
+    const ref = await db.collection('produk').add({
+      ...data,
+      status: 'tersedia',
+      createdAt: new Date().toISOString()
+    });
+    return ref.id;
+  },
+
+  update: async (id, data) => {
+    await db.collection('produk').doc(id).update(data);
+  },
+
+  delete: async (id) => {
+    await db.collection('produk').doc(id).delete();
+  }
+};
+
+module.exports = productModel;
+
+
+===== D:\fixxUAS\proyekUAS kelompok 7\lautku\models\tambakModel.js =====
+
+const db = require('../config/db');
+
+const tambakModel = {
+  findByNelayan: async (nelayan_id) => {
+    const snapshot = await db.collection('tambak')
+      .where('nelayan_id', '==', nelayan_id)
+      .get();
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  },
+
+  findById: async (id) => {
+    const doc = await db.collection('tambak').doc(id).get();
+    if (!doc.exists) return null;
+    return { id: doc.id, ...doc.data() };
+  },
+
+  create: async (data) => {
+    const ref = await db.collection('tambak').add({
+      ...data,
+      createdAt: new Date().toISOString()
+    });
+    return ref.id;
+  },
+
+  update: async (id, data) => {
+    await db.collection('tambak').doc(id).update(data);
+  },
+
+  delete: async (id) => {
+    await db.collection('tambak').doc(id).delete();
+  }
+};
+
+module.exports = tambakModel;
+
+
+===== D:\fixxUAS\proyekUAS kelompok 7\lautku\models\userModel.js =====
+
+const db = require('../config/db');
+
+const userModel = {
+  findByEmail: async (email) => {
+    const snapshot = await db.collection('users')
+      .where('email', '==', email)
+      .limit(1)
+      .get();
+    if (snapshot.empty) return null;
+    const doc = snapshot.docs[0];
+    return { id: doc.id, ...doc.data() };
+  },
+
+  findById: async (id) => {
+    const doc = await db.collection('users').doc(id).get();
+    if (!doc.exists) return null;
+    return { id: doc.id, ...doc.data() };
+  },
+
+  create: async (data) => {
+    const ref = await db.collection('users').add({
+      ...data,
+      status: 'aktif',
+      createdAt: new Date().toISOString()
+    });
+    return ref.id;
+  },
+
+  update: async (id, data) => {
+    await db.collection('users').doc(id).update(data);
+  },
+
+  delete: async (id) => {
+    await db.collection('users').doc(id).delete();
+  },
+
+  findAll: async () => {
+    const snapshot = await db.collection('users').get();
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  },
+
+  suspend: async (id, status) => {
+    await db.collection('users').doc(id).update({ status });
+  }
+};
+
+module.exports = userModel;
+
+
+===== D:\fixxUAS\proyekUAS kelompok 7\lautku\routes\artikelRoutes.js =====
+
+const express = require('express');
+const router = express.Router();
+const artikelController = require('../controllers/artikelController');
+const auth = require('../middleware/auth');
+const role = require('../middleware/role');
+
+router.get('/', artikelController.getAll);
+router.get('/admin', auth, role('admin'), artikelController.getAllAdmin);
+router.get('/:id', artikelController.getById);
+router.post('/', auth, role('admin'), artikelController.create);
+router.put('/:id', auth, role('admin'), artikelController.update);
+router.delete('/:id', auth, role('admin'), artikelController.delete);
+
+module.exports = router;
+
+
+===== D:\fixxUAS\proyekUAS kelompok 7\lautku\routes\authRoutes.js =====
+
+const express = require('express');
+const router = express.Router();
+const authController = require('../controllers/authController');
+const auth = require('../middleware/auth');
+
+router.post('/register', authController.register);
+router.post('/login', authController.login);
+router.post('/reset-password', authController.resetPassword);
+router.get('/me', auth, authController.getMe);
+
+module.exports = router;
+
+
+===== D:\fixxUAS\proyekUAS kelompok 7\lautku\routes\cuacaRoutes.js =====
+
+const express = require('express');
+const router = express.Router();
+const cuacaController = require('../controllers/cuacaController');
+const auth = require('../middleware/auth');
+const role = require('../middleware/role');
+
+router.get('/:tambak_id', auth, role('nelayan', 'admin'), cuacaController.getByTambak);
+
+module.exports = router;
+
+
+===== D:\fixxUAS\proyekUAS kelompok 7\lautku\routes\monitoringRoutes.js =====
+
+const express = require('express');
+const router = express.Router();
+const monitoringController = require('../controllers/monitoringController');
+const auth = require('../middleware/auth');
+const role = require('../middleware/role');
+
+router.get('/:tambak_id', auth, role('nelayan'), monitoringController.getByTambak);
+router.post('/', auth, role('nelayan'), monitoringController.create);
+router.delete('/:id', auth, role('nelayan'), monitoringController.delete);
+
+module.exports = router;
+
+
+===== D:\fixxUAS\proyekUAS kelompok 7\lautku\routes\orderRoutes.js =====
+
+const express = require('express');
+const router = express.Router();
+const orderController = require('../controllers/orderController');
+const auth = require('../middleware/auth');
+const role = require('../middleware/role');
+
+// Keranjang
+router.get('/keranjang', auth, role('pembeli'), orderController.getKeranjang);
+router.post('/keranjang', auth, role('pembeli'), orderController.addToKeranjang);
+router.put('/keranjang/:id', auth, role('pembeli'), orderController.updateKeranjang);
+router.delete('/keranjang/:id', auth, role('pembeli'), orderController.deleteKeranjang);
+
+// Order
+router.post('/checkout', auth, role('pembeli'), orderController.checkout);
+router.get('/', auth, orderController.getOrders);
+router.get('/:id', auth, orderController.getOrderById);
+router.put('/:id/status', auth, role('nelayan', 'admin'), orderController.updateStatus);
+router.put('/:id/cancel', auth, role('pembeli'), orderController.cancelOrder);
+
+module.exports = router;
+
+
+===== D:\fixxUAS\proyekUAS kelompok 7\lautku\routes\panenRoutes.js =====
+
+const express = require('express');
+const router = express.Router();
+
+const panenController = require('../controllers/panenController');
+const auth = require('../middleware/auth');
+const role = require('../middleware/role');
+
+router.get('/tambak/:tambak_id', auth, role('nelayan'), panenController.getByTambak);
+router.get('/:id', auth, role('nelayan'), panenController.getById);
+router.post('/', auth, role('nelayan'), panenController.create);
+router.put('/:id', auth, role('nelayan'), panenController.update);
+router.delete('/:id', auth, role('nelayan'), panenController.remove);
+
+module.exports = router;
+
+
+===== D:\fixxUAS\proyekUAS kelompok 7\lautku\routes\productRoutes.js =====
+
+const express = require('express');
+const router = express.Router();
+const productController = require('../controllers/productController');
+const auth = require('../middleware/auth');
+const role = require('../middleware/role');
+
+// Kategori
+router.get('/kategori', productController.getAllKategori);
+router.post('/kategori', auth, role('admin'), productController.createKategori);
+router.delete('/kategori/:id', auth, role('admin'), productController.deleteKategori);
+
+// Produk
+router.get('/', productController.getAll);
+router.get('/milik-saya', auth, role('nelayan'), productController.getByNelayan);
+router.get('/:id', productController.getById);
+router.post('/', auth, role('nelayan'), productController.create);
+router.put('/:id', auth, role('nelayan', 'admin'), productController.update);
+router.delete('/:id', auth, role('nelayan', 'admin'), productController.delete);
+
+module.exports = router;
+
+
+===== D:\fixxUAS\proyekUAS kelompok 7\lautku\routes\tambakRoutes.js =====
+
+const express = require('express');
+const router = express.Router();
+const tambakController = require('../controllers/tambakController');
+const auth = require('../middleware/auth');
+const role = require('../middleware/role');
+
+router.get('/', auth, role('nelayan'), tambakController.getAll);
+router.get('/:id', auth, role('nelayan', 'admin'), tambakController.getById);
+router.post('/', auth, role('nelayan'), tambakController.create);
+router.put('/:id', auth, role('nelayan'), tambakController.update);
+router.delete('/:id', auth, role('nelayan'), tambakController.delete);
+
+router.get('/:id/panen', auth, role('nelayan'), tambakController.getPanen);
+router.post('/:id/panen', auth, role('nelayan'), tambakController.createPanen);
+router.put('/panen/:id', auth, role('nelayan'), tambakController.updatePanen);
+
+router.get('/:id/pengeluaran', auth, role('nelayan'), tambakController.getPengeluaran);
+router.post('/:id/pengeluaran', auth, role('nelayan'), tambakController.createPengeluaran);
+router.put('/pengeluaran/:id', auth, role('nelayan'), tambakController.updatePengeluaran);
+router.delete('/pengeluaran/:id', auth, role('nelayan'), tambakController.deletePengeluaran);
+
+router.get('/:id/laporan', auth, role('nelayan'), tambakController.getLaporan);
+
+module.exports = router;
+
+
+===== D:\fixxUAS\proyekUAS kelompok 7\lautku\routes\userRoutes.js =====
+
+const express = require('express');
+const router = express.Router();
+const userController = require('../controllers/userController');
+const auth = require('../middleware/auth');
+const role = require('../middleware/role');
+
+router.get('/', auth, role('admin'), userController.getAll);
+router.get('/:id', auth, userController.getById);
+router.put('/:id', auth, userController.update);
+router.delete('/:id', auth, role('admin'), userController.delete);
+router.put('/:id/suspend', auth, role('admin'), userController.suspend);
+
+module.exports = router;
+
+
+===== D:\fixxUAS\proyekUAS kelompok 7\lautku\app.js =====
+
+const express = require('express');
+const cors = require('cors');
+const path = require('path');
+require('dotenv').config();
+
+const app = express();
+
+app.use(cors());
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use('/uploads', express.static(path.join(__dirname, 'public/uploads')));
+
+app.use('/api/auth', require('./routes/authRoutes'));
+app.use('/api/users', require('./routes/userRoutes'));
+app.use('/api/produk', require('./routes/productRoutes'));
+app.use('/api/orders', require('./routes/orderRoutes'));
+app.use('/api/tambak', require('./routes/tambakRoutes'));
+app.use('/api/monitoring', require('./routes/monitoringRoutes'));
+app.use('/api/artikel', require('./routes/artikelRoutes'));
+app.use('/api/panen', require('./routes/panenRoutes'));
+app.use('/api/cuaca', require('./routes/cuacaRoutes'));
+
+app.get('/', (req, res) => {
+  res.json({ message: 'LautKu API berjalan!' });
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Server berjalan di port ${PORT}`));
