@@ -5,14 +5,25 @@ Tugas UAS Pengembangan Web Back-End — Tema: Blue Economy
 
 ---
 
+## 🔗 Link Aplikasi Live
+
+| Layanan | URL |
+|---|---|
+| **Frontend (Web Browser)** | https://frontend-uas-seven-production.up.railway.app |
+| **Backend (API / Postman)** | https://blue-eco-seven-uas-production.up.railway.app |
+
+> Untuk pengujian API lewat Postman, gunakan base URL backend di atas sebagai pengganti `http://localhost:3000` pada seluruh contoh endpoint di dokumen ini.
+
+---
+
 ## 👥 Anggota Kelompok 7
 
-| Nama | Peran | Modul Backend | Modul Frontend |
-|---|---|---|---|
-| Ruth | Ketua | Autentikasi & Manajemen Pengguna | Seluruh halaman frontend (Vue.js) |
-| Rizky | Anggota | Produk & Marketplace | - |
-| Siti | Anggota | Manajemen Tambak & Budidaya | - |
-| Suci | Anggota | Monitoring, Cuaca & Artikel | - |
+| Nama | Peran | Modul Backend | Modul Frontend | Tanggung Jawab Tambahan |
+|---|---|---|---|---|
+| Ruth | Ketua | Autentikasi & Manajemen Pengguna | Landing Page, Login & Register, Dashboard Admin, Manajemen Pengguna, Manajemen Artikel, Dashboard Nelayan, Produk Saya, Tambak Saya, Siklus Panen, Pengeluaran, Monitoring Air, Katalog, Detail Produk, Keranjang, Riwayat Order, Artikel Publik & Detail Artikel | Integrasi seluruh modul backend dari anggota lain, pengujian akhir menyeluruh, deployment backend & frontend ke Railway, penyusunan dokumentasi dan berkas submission |
+| Rizky | Anggota | Produk & Marketplace | - | Pengujian modul produk & order di lingkungan production |
+| Siti | Anggota | Manajemen Tambak & Budidaya | - | Pengujian modul tambak, panen, dan pengeluaran di lingkungan production |
+| Suci | Anggota | Monitoring, Cuaca & Artikel | - | Pengujian modul monitoring, cuaca, dan artikel di lingkungan production |
 
 ---
 
@@ -40,7 +51,7 @@ LautKu adalah platform web terpadu yang mendukung ekosistem perikanan dan budida
 | HTTP Client | Axios |
 | API Cuaca | Open-Meteo (gratis, tanpa API key) |
 | Hosting Backend | Railway |
-| Hosting Frontend | Railway / Vercel / Netlify |
+| Hosting Frontend | Railway (Vite preview) |
 
 ---
 
@@ -82,6 +93,7 @@ lautku-frontend/
 │   ├── components/
 │   └── assets/
 ├── index.html
+├── vite.config.js
 ├── .env
 └── package.json
 ```
@@ -214,7 +226,7 @@ GET    /api/tambak/:id/pengeluaran
 POST   /api/tambak/:id/pengeluaran
 PUT    /api/tambak/pengeluaran/:id
 DELETE /api/tambak/pengeluaran/:id
-GET    /api/tambak/:id/laporan
+GET    /api/tambak/:id/laporan?dari=YYYY-MM-DD&sampai=YYYY-MM-DD
 
 GET    /api/panen/tambak/:tambak_id
 GET    /api/panen/:id
@@ -222,6 +234,8 @@ POST   /api/panen
 PUT    /api/panen/:id
 DELETE /api/panen/:id
 ```
+
+> Parameter `dari` dan `sampai` pada endpoint laporan bersifat opsional. Kalau tidak disertakan, backend memakai rentang tanggal default yang sangat luas supaya tetap menampilkan seluruh data.
 
 ### Monitoring & Cuaca
 ```
@@ -259,6 +273,11 @@ DELETE /api/artikel/:id
 | `monitoring_air` | Data kualitas air tambak |
 | `artikel` | Artikel edukasi budidaya |
 
+### ⚠️ Catatan Penting Firestore
+
+- Konfigurasi `db.js` menyertakan `db.settings({ ignoreUndefinedProperties: true })` supaya field opsional yang bernilai `undefined` tidak menyebabkan error saat disimpan.
+- Beberapa query yang memfilter lebih dari satu field (misalnya `pengeluaran_tambak` berdasarkan `tambak_id` dan `tanggal`, atau `monitoring_air` berdasarkan `tambak_id` dan urutan `tanggal`) membutuhkan **composite index**. Kalau muncul error `FAILED_PRECONDITION: The query requires an index`, buka link yang tertera di pesan error tersebut di browser, lalu klik **Create Index** dan tunggu status berubah menjadi **Enabled**.
+
 ---
 
 ## 🚀 Deployment
@@ -266,29 +285,70 @@ DELETE /api/artikel/:id
 ### Backend (Railway)
 
 ```bash
+cd lautku
 railway login
-railway init
+railway link            # hubungkan ke project yang sudah ada, atau railway init untuk buat baru
+railway variables set PORT=3000
 railway variables set JWT_SECRET=lautku_secret_key_2026
 railway variables set JWT_EXPIRES_IN=7d
 railway up
 railway domain
 ```
 
-### Frontend
+Contoh URL production: `https://blue-eco-seven-uas-production.up.railway.app` (backend sudah aktif dan siap diakses)
 
-Update `VITE_API_URL` di `.env` frontend dengan URL backend Railway, lalu build:
+### Frontend (Railway)
 
 ```bash
-npm run build
+cd lautku-frontend
 ```
 
-Deploy folder `dist/` ke Railway, Vercel, atau Netlify.
+Update `.env` dengan URL backend production:
+
+```env
+VITE_API_URL=https://blue-eco-seven-uas-production.up.railway.app/api
+```
+
+Tambahkan script start untuk serve hasil build:
+
+```bash
+npm pkg set scripts.start="vite preview --host 0.0.0.0 --port $PORT"
+```
+
+Deploy:
+
+```bash
+railway init
+railway up
+railway domain
+```
+
+URL production yang sudah aktif: `https://frontend-uas-seven-production.up.railway.app`
+
+### Verifikasi Setelah Deploy
+
+1. Test backend production langsung dari browser/Postman (`GET /` harus mengembalikan pesan server aktif)
+2. Register ulang akun admin, nelayan, dan pembeli di database production (karena Firestore production dikosongkan sebelum deploy final)
+3. Test seluruh endpoint utama tiap modul di Postman menggunakan URL production
+4. Buka frontend production di browser, uji alur penuh tiap role (login, fitur inti, logout)
+
+---
+
+## 📦 Checklist Submission
+
+- [ ] Database Firestore production sudah bersih dari data testing lokal, hanya berisi data demo yang relevan
+- [ ] Backend live di `https://blue-eco-seven-uas-production.up.railway.app` dan frontend live di `https://frontend-uas-seven-production.up.railway.app`, keduanya sudah diuji ulang
+- [ ] File `Tim.txt` sudah dibuat, berisi nama tim, anggota beserta NIM, teknologi yang dipakai, kedua link hosting di atas, dan kredensial admin
+- [ ] Source code backend & frontend disiapkan tanpa `node_modules/`, `.env`, `serviceAccountKey.json`, dan folder `dist/`
+- [ ] Video demo sudah direkam seluruh anggota dan digabung menjadi satu file (maksimal 15 menit)
+- [ ] File zip berisi `Tim.txt`, source code backend, source code frontend, dan video demo
+- [ ] Link Google Drive submission sudah diatur ke **Anyone with the link** dan sudah diuji buka di jendela **incognito** sebelum dikirim ke dosen
 
 ---
 
 ## 📝 Catatan Keamanan
 
-- File `serviceAccountKey.json` dan `.env` **tidak** disertakan dalam repository, tercantum di `.gitignore`
+- File `serviceAccountKey.json` dan `.env` **tidak** disertakan dalam repository maupun file submission, tercantum di `.gitignore`
 - Password pengguna dienkripsi menggunakan bcrypt sebelum disimpan
 - Setiap endpoint yang membutuhkan otentikasi dilindungi middleware JWT
 - Otorisasi berbasis role diterapkan pada endpoint yang bersifat sensitif
