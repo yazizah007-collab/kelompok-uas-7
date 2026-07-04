@@ -20,10 +20,10 @@ Tugas UAS Pengembangan Web Back-End — Tema: Blue Economy
 
 | Nama | Peran | Modul Backend | Modul Frontend | Tanggung Jawab Tambahan |
 |---|---|---|---|---|
-| Ruth | Ketua | Autentikasi & Manajemen Pengguna | Landing Page, Login & Register, Dashboard Admin, Manajemen Pengguna, Manajemen Artikel, Dashboard Nelayan, Produk Saya, Tambak Saya, Siklus Panen, Pengeluaran, Monitoring Air, Katalog, Detail Produk, Keranjang, Riwayat Order, Artikel Publik & Detail Artikel | Integrasi seluruh modul backend dari anggota lain, pengujian akhir menyeluruh, deployment backend & frontend ke Railway, penyusunan dokumentasi dan berkas submission |
-| Rizky | Anggota | Produk & Marketplace | - | Pengujian modul produk & order di lingkungan production |
-| Siti | Anggota | Manajemen Tambak & Budidaya | - | Pengujian modul tambak, panen, dan pengeluaran di lingkungan production |
-| Suci | Anggota | Monitoring, Cuaca & Artikel | - | Pengujian modul monitoring, cuaca, dan artikel di lingkungan production |
+| Ruth | Ketua | Autentikasi & Manajemen Pengguna | Landing Page, Login & Register, Dashboard Admin, Manajemen Pengguna, Dashboard Nelayan, Produk Saya, Tambak Saya | Integrasi seluruh modul backend dari anggota lain, pengujian akhir menyeluruh, deployment backend & frontend ke Railway, penyusunan dokumentasi dan berkas submission |
+| Suci | Anggota | Monitoring, Cuaca & Artikel | Manajemen Artikel, Siklus Panen, Pengeluaran, Monitoring Air, Katalog, Detail Produk, Keranjang, Riwayat Order, Artikel Publik & Detail Artikel | Pengujian modul monitoring, cuaca, dan artikel di lingkungan production |
+| Rizky | Anggota | Produk & Marketplace | Tampilan awal halaman Produk & Order | Pengujian modul produk & order di lingkungan production |
+| Siti | Anggota | Manajemen Tambak & Budidaya | Tampilan awal halaman Tambak & Budidaya | Pengujian modul tambak, panen, dan pengeluaran di lingkungan production |
 
 ---
 
