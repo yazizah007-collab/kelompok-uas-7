@@ -336,13 +336,13 @@ URL production yang sudah aktif: `https://frontend-uas-seven-production.up.railw
 
 ## 📦 Checklist Submission
 
-- [ ] Database Firestore production sudah bersih dari data testing lokal, hanya berisi data demo yang relevan
-- [ ] Backend live di `https://blue-eco-seven-uas-production.up.railway.app` dan frontend live di `https://frontend-uas-seven-production.up.railway.app`, keduanya sudah diuji ulang
-- [ ] File `Tim.txt` sudah dibuat, berisi nama tim, anggota beserta NIM, teknologi yang dipakai, kedua link hosting di atas, dan kredensial admin
-- [ ] Source code backend & frontend disiapkan tanpa `node_modules/`, `.env`, `serviceAccountKey.json`, dan folder `dist/`
-- [ ] Video demo sudah direkam seluruh anggota dan digabung menjadi satu file (maksimal 15 menit)
-- [ ] File zip berisi `Tim.txt`, source code backend, source code frontend, dan video demo
-- [ ] Link Google Drive submission sudah diatur ke **Anyone with the link** dan sudah diuji buka di jendela **incognito** sebelum dikirim ke dosen
+- [✔️] Database Firestore production sudah bersih dari data testing lokal, hanya berisi data demo yang relevan
+- [✔️] Backend live di `https://blue-eco-seven-uas-production.up.railway.app` dan frontend live di `https://frontend-uas-seven-production.up.railway.app`, keduanya sudah diuji ulang
+- [✔️] File `Tim.txt` sudah dibuat, berisi nama tim, anggota beserta NIM, teknologi yang dipakai, kedua link hosting di atas, dan kredensial admin
+- [✔️] Source code backend & frontend disiapkan tanpa `node_modules/`, `.env`, `serviceAccountKey.json`, dan folder `dist/`
+- [✔️] Video demo sudah direkam seluruh anggota dan digabung menjadi satu file (maksimal 15 menit)
+- [✔️] File zip berisi `Tim.txt`, source code backend, source code frontend, dan video demo
+- [✔️] Link Google Drive submission sudah diatur ke **Anyone with the link** dan sudah diuji buka di jendela **incognito** sebelum dikirim ke dosen
 
 ---
 
